@@ -114,6 +114,7 @@ public static class UIFactory
         colors.pressedColor = new Color(0.8f, 0.8f, 0.8f);
         colors.selectedColor = new Color(1.25f, 1.2f, 1.05f);
         button.colors = colors;
+        button.onClick.AddListener(() => Sfx.PlayUI(SoundId.UIClick, 0.6f));
         button.onClick.AddListener(onClick);
 
         var layout = image.gameObject.AddComponent<LayoutElement>();

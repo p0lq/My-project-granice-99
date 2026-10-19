@@ -78,6 +78,8 @@ public class Flashlight : MonoBehaviour
 
     void SetOn(bool on)
     {
+        if (on != IsOn)
+            Sfx.Play(SoundId.Click, transform.position + Vector3.up * 1.3f, 0.5f);
         IsOn = on;
         if (lamp != null)
             lamp.enabled = on;

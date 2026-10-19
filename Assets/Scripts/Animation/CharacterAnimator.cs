@@ -66,6 +66,18 @@ public class CharacterAnimator : MonoBehaviour
         }
     }
 
+    // Длина клипа в секундах, 0 если такого нет. EnemyAI по ней ждёт конца крика и удара,
+    // иначе «Серый» поехал бы дальше, пока анимация ещё не доиграла.
+    public float ClipLength(string clipName)
+    {
+        if (animator == null || animator.runtimeAnimatorController == null)
+            return 0f;
+        foreach (var clip in animator.runtimeAnimatorController.animationClips)
+            if (clip.name == clipName)
+                return clip.length;
+        return 0f;
+    }
+
     void Update()
     {
         if (animator == null)

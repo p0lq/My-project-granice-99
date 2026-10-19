@@ -19,6 +19,7 @@ public class Well : Interactable
         GameSession.Add(ItemId.Water);
         GameMessages.Show(charges > 0 ? "Набрал бутылку воды" : "Набрал последнюю воду, колодец пуст");
         crankSpin = 720f;
+        Sfx.Play(SoundId.Well, transform.position + Vector3.up, 0.9f);
     }
 
     void Update()

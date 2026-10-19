@@ -94,10 +94,16 @@ public static class AnimatorControllerBuilder
         tree.blendParameter = "Speed";
         tree.useAutomaticThresholds = false;
         tree.AddChild(clips["Idle"], 0f);
-        if (clips.TryGetValue("Walk", out var walk))
-            tree.AddChild(walk, walkSpeed);
-        if (clips.TryGetValue("Run", out var run))
-            tree.AddChild(run, runSpeed);
+        clips.TryGetValue("Walk", out var walk);
+        clips.TryGetValue("Run", out var run);
+        // Порог клипа ставим на ту скорость, с которой он движется сам, тогда ноги не скользят.
+        // Клипы In Place (скорость около нуля) получают скорость из таблицы Speeds.
+        float walkAt = walk != null ? ClipSpeed(walk, walkSpeed) : walkSpeed;
+        float runAt = run != null ? Mathf.Max(ClipSpeed(run, runSpeed), walkAt + 0.5f) : runSpeed;
+        if (walk != null)
+            tree.AddChild(walk, walkAt);
+        if (run != null)
+            tree.AddChild(run, runAt);
         sm.defaultState = locomotion;
 
         if (clips.TryGetValue("CrouchWalk", out var crouchWalk))
@@ -149,6 +155,13 @@ public static class AnimatorControllerBuilder
         exit.hasExitTime = true;
         exit.exitTime = 0.9f;
         exit.duration = 0.1f;
+    }
+
+    static float ClipSpeed(AnimationClip clip, float fallback)
+    {
+        var v = clip.averageSpeed;
+        float speed = new Vector2(v.x, v.z).magnitude;
+        return speed > 0.3f ? speed : fallback;
     }
 
     static void Clear(AnimatorController controller)

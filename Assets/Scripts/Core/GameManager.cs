@@ -126,6 +126,12 @@ public class GameManager : MonoBehaviour
             playerMap.Enable();
         else
             playerMap.Disable();
+        // На паузе и в финальных меню звуки мира замирают, кнопки и музыка финала слышны.
+        AudioListener.pause = !playing;
+        if (state == State.Won)
+            Sfx.PlayUI(SoundId.Win);
+        else if (state == State.Lost)
+            Sfx.PlayUI(SoundId.Lose);
         StateChanged?.Invoke(state);
     }
 

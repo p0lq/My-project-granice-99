@@ -52,6 +52,8 @@ public class EnemyAI : MonoBehaviour
     float nextAttackTime;
     float pendingHitTime = -1f;
     float screamUntil;
+    float attackBusyUntil;
+    float attackAnimTime;
     bool wasHunting;
 
     public State Current { get; private set; } = State.Wander;
@@ -74,6 +76,16 @@ public class EnemyAI : MonoBehaviour
         // а включённый раньше агент не найдёт её и выдаст предупреждение.
         agent.enabled = true;
         home = transform.position;
+
+        // С моделью паузы подстраиваются под длину её анимаций (выход из клипа на 90 %).
+        var anim = GetComponent<CharacterAnimator>();
+        if (anim != null)
+        {
+            float scream = anim.ClipLength("Scream");
+            if (scream > 0f)
+                screamTime = scream * 0.9f;
+            attackAnimTime = anim.ClipLength("Attack") * 0.9f;
+        }
 
         var playerObject = GameObject.FindWithTag("Player");
         if (playerObject != null)
@@ -104,6 +116,8 @@ public class EnemyAI : MonoBehaviour
 
         if (hunting && Time.time < screamUntil)
             Scream();
+        else if (Time.time < attackBusyUntil)
+            Hold();
         else if (!hunting)
             Wander();
         else if (Vector3.Distance(transform.position, player.position) <= attackRange)
@@ -162,11 +176,19 @@ public class EnemyAI : MonoBehaviour
 
     void Scream()
     {
-        agent.isStopped = true;
+        Hold();
         Vector3 dir = player.position - transform.position;
         dir.y = 0f;
         if (dir.sqrMagnitude > 0.001f)
             transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(dir), 360f * Time.deltaTime);
+    }
+
+    // Стоять на месте, пока играет крик или удар. Скорость обнуляем сразу:
+    // isStopped только перестаёт вести по пути, а разгон ещё несёт агента вперёд.
+    void Hold()
+    {
+        agent.isStopped = true;
+        agent.velocity = Vector3.zero;
     }
 
     void Chase()
@@ -180,7 +202,7 @@ public class EnemyAI : MonoBehaviour
     void Attack()
     {
         Current = State.Attack;
-        agent.isStopped = true;
+        Hold();
 
         Vector3 dir = player.position - transform.position;
         dir.y = 0f;
@@ -191,6 +213,7 @@ public class EnemyAI : MonoBehaviour
             return;
         nextAttackTime = Time.time + attackCooldown;
         pendingHitTime = Time.time + attackHitDelay;
+        attackBusyUntil = Time.time + Mathf.Max(attackAnimTime, attackHitDelay + 0.2f);
         Attacked?.Invoke();
     }
 

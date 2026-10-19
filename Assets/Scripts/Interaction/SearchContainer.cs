@@ -26,6 +26,7 @@ public class SearchContainer : Interactable
     public override void Interact(PlayerInteractor player)
     {
         searched = true;
+        Sfx.Play(SoundId.Crate, transform.position + Vector3.up * 0.5f, 0.9f);
         if (lid != null)
             lid.localRotation *= Quaternion.Euler(-110f, 0f, 0f);
 

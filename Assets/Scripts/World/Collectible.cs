@@ -41,6 +41,7 @@ public class Collectible : MonoBehaviour
             return;
 
         GameSession.Add(item, amount);
+        Sfx.Play(SoundId.Pickup, transform.position, 0.7f, 0.03f);
         GameMessages.Show(amount > 1 ? $"Подобрал: {Items.Name(item)} ×{amount}" : $"Подобрал: {Items.Name(item)}");
         Destroy(gameObject);
     }

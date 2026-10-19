@@ -73,8 +73,11 @@ public class PlayerCombat : MonoBehaviour
         foreach (var hit in Physics.OverlapSphere(HitCenter(), hitRadius, ~0, QueryTriggerInteraction.Ignore))
         {
             var target = hit.GetComponentInParent<Health>();
-            if (target != null && target != health)
+            if (target != null && target != health && !target.IsDead)
+            {
                 target.TakeDamage(damage);
+                Sfx.Play(SoundId.Hit, hit.ClosestPoint(HitCenter()), 0.9f);
+            }
         }
     }
 

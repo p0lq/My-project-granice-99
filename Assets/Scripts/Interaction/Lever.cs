@@ -24,6 +24,7 @@ public class Lever : Interactable
     public override void Interact(PlayerInteractor player)
     {
         used = true;
+        Sfx.Play(SoundId.Lever, transform.position + Vector3.up, 1f, 0f);
         if (handle != null)
             handle.localRotation *= Quaternion.Euler(90f, 0f, 0f);
         foreach (var lamp in lamps)

@@ -69,16 +69,21 @@ public class Door : Interactable
             else
             {
                 GameMessages.Show(lockedMessage);
+                Sfx.Play(SoundId.Locked, transform.position + Vector3.up, 0.7f);
                 return;
             }
         }
         open = !open;
+        Sfx.Play(SoundId.Door, transform.position + Vector3.up, 0.8f);
     }
 
     public void Unlock(bool openNow)
     {
         locked = false;
-        if (openNow)
+        if (openNow && !open)
+        {
             open = true;
+            Sfx.Play(SoundId.Door, transform.position + Vector3.up, 0.9f, 0f);
+        }
     }
 }

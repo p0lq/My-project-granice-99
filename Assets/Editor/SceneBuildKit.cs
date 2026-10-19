@@ -132,6 +132,8 @@ public static class SceneBuildKit
         root.AddComponent<PlayerCombat>();
         var animator = root.AddComponent<CharacterAnimator>();
         SetObject(animator, "fallbackBody", Body(root.transform, "SK_Player", material, 1.75f));
+        root.AddComponent<Footsteps>();
+        root.AddComponent<CharacterSounds>();
 
         if (fullKit)
         {
@@ -182,6 +184,10 @@ public static class SceneBuildKit
         root.AddComponent<EnemyAI>();
         var animator = root.AddComponent<CharacterAnimator>();
         SetObject(animator, "fallbackBody", Body(root.transform, "SK_Grey", material, 1.8f));
+        var steps = root.AddComponent<Footsteps>();
+        Set(steps, "stepLength", p => p.floatValue = 0.6f);
+        Set(steps, "volume", p => p.floatValue = 0.3f);
+        root.AddComponent<CharacterSounds>();
         return root;
     }
 
