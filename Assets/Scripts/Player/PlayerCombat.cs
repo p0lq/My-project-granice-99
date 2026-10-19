@@ -62,6 +62,12 @@ public class PlayerCombat : MonoBehaviour
         Attacked?.Invoke();
     }
 
+    // Шум без удара: обыск ящика, открытый люк. EnemyAI слышит его на расстоянии attackNoise.
+    public void MakeNoise()
+    {
+        LastNoiseTime = Time.time;
+    }
+
     void DealDamage()
     {
         foreach (var hit in Physics.OverlapSphere(HitCenter(), hitRadius, ~0, QueryTriggerInteraction.Ignore))

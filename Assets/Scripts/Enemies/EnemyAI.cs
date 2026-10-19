@@ -41,6 +41,7 @@ public class EnemyAI : MonoBehaviour
     Transform player;
     PlayerMovement playerMovement;
     PlayerCombat playerCombat;
+    Flashlight playerFlashlight;
     Health playerHealth;
 
     Vector3 home;
@@ -74,6 +75,7 @@ public class EnemyAI : MonoBehaviour
             player = playerObject.transform;
             playerMovement = playerObject.GetComponent<PlayerMovement>();
             playerCombat = playerObject.GetComponent<PlayerCombat>();
+            playerFlashlight = playerObject.GetComponent<Flashlight>();
             playerHealth = playerObject.GetComponent<Health>();
         }
     }
@@ -114,7 +116,10 @@ public class EnemyAI : MonoBehaviour
         if (distance < noise * hearing)
             return true;
 
-        if (distance > sightRange || Vector3.Angle(transform.forward, toPlayer) > sightAngle * 0.5f)
+        // Свет фонарика видно с любой стороны и дальше, чем самого игрока.
+        bool lightVisible = playerFlashlight != null && playerFlashlight.IsOn && distance < playerFlashlight.AttractRange;
+        bool inSight = distance <= sightRange && Vector3.Angle(transform.forward, toPlayer) <= sightAngle * 0.5f;
+        if (!lightVisible && !inSight)
             return false;
 
         // Стены и дома загораживают обзор.

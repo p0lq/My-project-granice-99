@@ -23,6 +23,10 @@ public class RuntimeNavMesh : MonoBehaviour
             markups.Add(Ignore(c.transform));
         foreach (var a in FindObjectsByType<NavMeshAgent>(FindObjectsInactive.Include))
             markups.Add(Ignore(a.transform));
+        // Двери вырезают себя из сетки сами (NavMeshObstacle), иначе закрытая при старте
+        // дверь навсегда осталась бы стеной для «Серых».
+        foreach (var d in FindObjectsByType<Door>(FindObjectsInactive.Include))
+            markups.Add(Ignore(d.transform));
         foreach (var c in FindObjectsByType<Collider>(FindObjectsInactive.Include))
             if (c.isTrigger)
                 markups.Add(Ignore(c.transform));

@@ -42,6 +42,13 @@ public class Health : MonoBehaviour
             Died?.Invoke();
     }
 
+    // Для перехода между сценами: здоровье берётся из GameSession, а не всегда полное.
+    public void SetCurrent(float value)
+    {
+        Current = Mathf.Clamp(value, 0f, maxHealth);
+        Changed?.Invoke(Current, maxHealth);
+    }
+
     public void Heal(float amount)
     {
         if (IsDead || amount <= 0f)
