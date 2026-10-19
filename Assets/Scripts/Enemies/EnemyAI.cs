@@ -24,6 +24,8 @@ public class EnemyAI : MonoBehaviour
     [SerializeField] float hearing = 1f;
     [Tooltip("Сколько секунд ищет игрока после того, как потерял его")]
     [SerializeField] float giveUpTime = 5f;
+    [Tooltip("Сколько секунд кричит на месте, заметив игрока. Крик даёт игроку время убежать")]
+    [SerializeField] float screamTime = 1.2f;
 
     [Header("Атака")]
     [SerializeField] float attackRange = 1.4f;
@@ -49,10 +51,14 @@ public class EnemyAI : MonoBehaviour
     float nextWanderTime;
     float nextAttackTime;
     float pendingHitTime = -1f;
+    float screamUntil;
+    bool wasHunting;
 
     public State Current { get; private set; } = State.Wander;
     public float CurrentSpeed => agent != null && agent.enabled ? agent.velocity.magnitude : 0f;
     public event Action Attacked;
+    // Заметил игрока после блуждания: CharacterAnimator включает анимацию Scream.
+    public event Action Alerted;
 
     void Awake()
     {
@@ -89,8 +95,16 @@ public class EnemyAI : MonoBehaviour
         if (playerAlive && Notices())
             lastSeenTime = Time.time;
         bool hunting = playerAlive && Time.time - lastSeenTime < giveUpTime;
+        if (hunting && !wasHunting)
+        {
+            screamUntil = Time.time + screamTime;
+            Alerted?.Invoke();
+        }
+        wasHunting = hunting;
 
-        if (!hunting)
+        if (hunting && Time.time < screamUntil)
+            Scream();
+        else if (!hunting)
             Wander();
         else if (Vector3.Distance(transform.position, player.position) <= attackRange)
             Attack();
@@ -144,6 +158,15 @@ public class EnemyAI : MonoBehaviour
         if (NavMesh.SamplePosition(point, out NavMeshHit navHit, 2f, NavMesh.AllAreas))
             agent.SetDestination(navHit.position);
         nextWanderTime = Time.time + wanderPause + UnityEngine.Random.Range(0f, wanderPause);
+    }
+
+    void Scream()
+    {
+        agent.isStopped = true;
+        Vector3 dir = player.position - transform.position;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 0.001f)
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(dir), 360f * Time.deltaTime);
     }
 
     void Chase()

@@ -2,10 +2,12 @@ using System;
 using System.IO;
 using UnityEditor;
 
-// Настройки импорта моделей из Blender, чтобы не выставлять их руками для каждого FBX.
-//   Assets/Art/Models/SK_*.fbx — персонаж со скелетом и анимациями: риг Humanoid,
-//     клипы переименовываются из «Armature|Walk» в «Walk», циклы включаются по имени.
-//   Assets/Art/Models/SM_*.fbx — неподвижный объект: без анимаций и скелета.
+// Настройки импорта моделей, чтобы не выставлять их руками для каждого FBX.
+//   Assets/Art/Models/SK_Имя.fbx      — персонаж со скелетом (и, если из Blender, со всеми анимациями):
+//                                       риг Humanoid, клипы «Armature|Walk» переименовываются в «Walk».
+//   Assets/Art/Models/SK_Имя@Клип.fbx — отдельный файл с одной анимацией, как отдаёт Mixamo:
+//                                       клип получает имя из части после @.
+//   Assets/Art/Models/SM_Имя.fbx      — неподвижный объект без скелета и анимаций.
 public class CharacterModelImport : AssetPostprocessor
 {
     const string Folder = "Assets/Art/Models/";
@@ -22,12 +24,16 @@ public class CharacterModelImport : AssetPostprocessor
         if (!importer.importSettingsMissing)
             return;
 
-        string name = Path.GetFileName(assetPath);
+        string name = Path.GetFileNameWithoutExtension(assetPath);
         if (name.StartsWith("SK_", StringComparison.Ordinal))
         {
             importer.animationType = ModelImporterAnimationType.Human;
+            // Свой аватар у каждого файла: Humanoid сам переносит анимацию между скелетами,
+            // и не важно, какой из файлов персонажа Unity импортирует первым.
             importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
             importer.importAnimation = true;
+            if (ClipNameFromFile(name) != null)
+                importer.materialImportMode = ModelImporterMaterialImportMode.None;
         }
         else if (name.StartsWith("SM_", StringComparison.Ordinal))
         {
@@ -40,27 +46,37 @@ public class CharacterModelImport : AssetPostprocessor
     // переэкспортировал FBX — клип появился сам.
     void OnPreprocessAnimation()
     {
-        if (!assetPath.StartsWith(Folder, StringComparison.Ordinal) ||
-            !Path.GetFileName(assetPath).StartsWith("SK_", StringComparison.Ordinal))
+        string name = Path.GetFileNameWithoutExtension(assetPath);
+        if (!assetPath.StartsWith(Folder, StringComparison.Ordinal) || !name.StartsWith("SK_", StringComparison.Ordinal))
             return;
 
         var importer = (ModelImporter)assetImporter;
+        string fileClip = ClipNameFromFile(name);
         var clips = importer.defaultClipAnimations;
         foreach (var clip in clips)
         {
-            clip.name = CleanName(clip.name);
+            // В файле Mixamo один клип с именем «mixamo.com», настоящее имя берём из имени файла.
+            clip.name = fileClip ?? CleanName(clip.name);
             clip.loopTime = Array.IndexOf(LoopingClips, clip.name) >= 0;
 
-            // Анимации сделаны на месте, двигает персонажа код. Запекаем корень в позу,
-            // чтобы модель не уплывала и не поворачивалась от накопленной ошибки.
+            // Двигает персонажа код, а не анимация (applyRootMotion выключен). Перемещение
+            // корня по XZ не запекаем, и Unity его отбрасывает: даже анимация Mixamo без
+            // галочки In Place будет идти на месте. Высоту и поворот запекаем в позу,
+            // чтобы падение в Death и развороты остались видны.
+            clip.lockRootPositionXZ = false;
             clip.lockRootRotation = true;
             clip.keepOriginalOrientation = true;
             clip.lockRootHeightY = true;
             clip.keepOriginalPositionY = true;
-            clip.lockRootPositionXZ = true;
-            clip.keepOriginalPositionXZ = true;
         }
         importer.clipAnimations = clips;
+    }
+
+    // «SK_Grey@Walk» → «Walk», «SK_Grey» → null.
+    public static string ClipNameFromFile(string fileName)
+    {
+        int at = fileName.IndexOf('@');
+        return at >= 0 ? fileName.Substring(at + 1) : null;
     }
 
     // Blender называет клипы по схеме «ИмяАрматуры|ИмяAction».

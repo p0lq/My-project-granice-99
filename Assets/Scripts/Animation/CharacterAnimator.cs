@@ -10,6 +10,7 @@ using UnityEngine;
 //   Attack trigger — замах
 //   Hit    trigger — получил урон
 //   Dead   bool    — погиб
+//   Scream trigger — «Серый» заметил игрока
 //
 // Пока модели нет и Animator не найден, показывает смерть простым наклоном тела,
 // чтобы на капсулах было видно, что персонаж погиб.
@@ -20,6 +21,7 @@ public class CharacterAnimator : MonoBehaviour
     static readonly int AttackId = Animator.StringToHash("Attack");
     static readonly int HitId = Animator.StringToHash("Hit");
     static readonly int DeadId = Animator.StringToHash("Dead");
+    static readonly int ScreamId = Animator.StringToHash("Scream");
 
     [Tooltip("Если пусто, ищется в дочерних объектах (Animator висит на импортированной модели)")]
     [SerializeField] Animator animator;
@@ -51,7 +53,10 @@ public class CharacterAnimator : MonoBehaviour
         if (combat != null)
             combat.Attacked += () => Trigger(AttackId);
         if (enemy != null)
+        {
             enemy.Attacked += () => Trigger(AttackId);
+            enemy.Alerted += () => Trigger(ScreamId);
+        }
 
         var health = GetComponent<Health>();
         if (health != null)

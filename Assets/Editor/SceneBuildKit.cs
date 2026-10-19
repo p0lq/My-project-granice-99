@@ -191,19 +191,19 @@ public static class SceneBuildKit
     {
         string modelPath = $"{ModelFolder}/{modelName}.fbx";
         var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
-        if (model != null)
+        // Контроллер пересобираем при каждой сборке сцены: могли добавиться новые клипы.
+        // У объектов Unity оператор ?? не видит «уничтоженный» null, поэтому проверки явные.
+        var controller = model != null ? ControllerFor(modelPath) : null;
+        if (controller != null)
         {
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(model, root);
-            // У объектов Unity оператор ?? не видит «уничтоженный» null, поэтому проверки явные.
             var animator = instance.GetComponent<Animator>();
             if (animator == null)
                 animator = instance.AddComponent<Animator>();
-            var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>($"Assets/Art/Animators/{modelName}.controller");
-            if (controller == null)
-                controller = AnimatorControllerBuilder.Build(modelPath);
             animator.runtimeAnimatorController = controller;
             return instance.transform;
         }
+        // Модель есть, а анимаций ещё нет: капсула лучше, чем персонаж, скользящий в T-позе.
 
         var body = new GameObject("Тело (временное)").transform;
         body.SetParent(root, false);
@@ -224,6 +224,20 @@ public static class SceneBuildKit
         nose.GetComponent<Renderer>().sharedMaterial = material;
 
         return body;
+    }
+
+    // На сцене шесть «Серых», а пересобрать контроллер достаточно один раз за команду меню.
+    static readonly Dictionary<string, RuntimeAnimatorController> controllers = new();
+
+    static RuntimeAnimatorController ControllerFor(string modelPath)
+    {
+        if (controllers.TryGetValue(modelPath, out var cached))
+            return cached;
+        if (controllers.Count == 0)
+            EditorApplication.delayCall += controllers.Clear;
+        var controller = AnimatorControllerBuilder.Build(modelPath);
+        controllers[modelPath] = controller;
+        return controller;
     }
 
     // ---------------------------------------------------------------- системы

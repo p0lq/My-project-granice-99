@@ -6,8 +6,9 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 // Создаёт Animator Controller для персонажа из клипов его FBX.
+// Клипы берутся из самого FBX и из файлов «Модель@Клип.fbx» рядом с ним (так отдаёт Mixamo).
 // Схема: Locomotion (смесь Idle/Walk/Run по Speed) ⇄ Crouch (если есть клипы приседа),
-// из любого состояния по триггерам в Attack и Hit с возвратом, по Dead в Death навсегда.
+// из любого состояния по триггерам в Attack, Hit и Scream с возвратом, по Dead в Death навсегда.
 // Параметры совпадают с теми, что выставляет CharacterAnimator.
 public static class AnimatorControllerBuilder
 {
@@ -18,7 +19,8 @@ public static class AnimatorControllerBuilder
     static readonly Dictionary<string, (float walk, float run)> Speeds = new()
     {
         { "SK_Player", (3f, 5.5f) },
-        { "SK_Grey", (3.4f, 5f) },
+        // Walk под скорость блуждания, Run под погоню.
+        { "SK_Grey", (1.2f, 3.4f) },
     };
     const float CrouchSpeed = 1.5f;
 
@@ -44,18 +46,25 @@ public static class AnimatorControllerBuilder
 
     public static AnimatorController Build(string modelPath)
     {
-        var clips = AssetDatabase.LoadAllAssetsAtPath(modelPath)
-            .OfType<AnimationClip>()
-            .Where(c => !c.name.StartsWith("__preview__"))
-            .ToDictionary(c => c.name);
+        string modelName = Path.GetFileNameWithoutExtension(modelPath);
+        // Unity хранит пути ассетов с прямыми слешами, а Windows отдаёт обратные.
+        string folder = Path.GetDirectoryName(modelPath).Replace(Path.DirectorySeparatorChar, '/');
+        var files = new List<string> { modelPath };
+        files.AddRange(Directory.GetFiles(folder, modelName + "@*.fbx").Select(f => f.Replace(Path.DirectorySeparatorChar, '/')));
+
+        var clips = new Dictionary<string, AnimationClip>();
+        foreach (var file in files)
+            foreach (var clip in AssetDatabase.LoadAllAssetsAtPath(file).OfType<AnimationClip>())
+                if (!clip.name.StartsWith("__preview__"))
+                    clips[clip.name] = clip;
 
         if (!clips.ContainsKey("Idle"))
         {
-            Debug.LogError($"В {modelPath} нет клипа Idle. Найдено: {string.Join(", ", clips.Keys)}");
+            Debug.LogWarning($"У {modelName} нет клипа Idle (нужен {modelName}@Idle.fbx или Action Idle в самом FBX), " +
+                             $"в сцене пока будет капсула. Найдено: {(clips.Count > 0 ? string.Join(", ", clips.Keys) : "ничего")}");
             return null;
         }
 
-        string modelName = Path.GetFileNameWithoutExtension(modelPath);
         var (walkSpeed, runSpeed) = Speeds.TryGetValue(modelName, out var s) ? s : (3f, 5.5f);
 
         if (!AssetDatabase.IsValidFolder("Assets/Art"))
@@ -63,15 +72,21 @@ public static class AnimatorControllerBuilder
         if (!AssetDatabase.IsValidFolder(OutputFolder))
             AssetDatabase.CreateFolder("Assets/Art", "Animators");
 
+        // Существующий контроллер очищаем, а не удаляем: на него уже ссылаются собранные
+        // сцены, и новый файл с другим GUID оставил бы их персонажей без анимаций.
         string controllerPath = $"{OutputFolder}/{modelName}.controller";
-        AssetDatabase.DeleteAsset(controllerPath);
-        var controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+        var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+        if (controller == null)
+            controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+        else
+            Clear(controller);
 
         controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
         controller.AddParameter("Crouch", AnimatorControllerParameterType.Bool);
         controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("Hit", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("Dead", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("Scream", AnimatorControllerParameterType.Trigger);
 
         var sm = controller.layers[0].stateMachine;
 
@@ -99,6 +114,7 @@ public static class AnimatorControllerBuilder
 
         AddOneShot(sm, clips, "Attack", locomotion);
         AddOneShot(sm, clips, "Hit", locomotion);
+        AddOneShot(sm, clips, "Scream", locomotion);
 
         if (clips.TryGetValue("Death", out var death))
         {
@@ -133,6 +149,19 @@ public static class AnimatorControllerBuilder
         exit.hasExitTime = true;
         exit.exitTime = 0.9f;
         exit.duration = 0.1f;
+    }
+
+    static void Clear(AnimatorController controller)
+    {
+        controller.parameters = new AnimatorControllerParameter[0];
+        var sm = controller.layers[0].stateMachine;
+        foreach (var t in sm.anyStateTransitions)
+            sm.RemoveAnyStateTransition(t);
+        foreach (var child in sm.states)
+            sm.RemoveState(child.state);
+        // Деревья смешивания живут в файле контроллера отдельно от состояний.
+        foreach (var tree in AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(controller)).OfType<BlendTree>())
+            AssetDatabase.RemoveObjectFromAsset(tree);
     }
 
     static void Connect(AnimatorState from, AnimatorState to, AnimatorConditionMode mode, string parameter)
