@@ -2,13 +2,17 @@ using UnityEngine;
 
 // Колодец: по E даёт бутылку воды. Вода в нём кончается, чтобы её нельзя было
 // набрать бесконечно и выпить посреди любой драки.
-public class Well : Interactable
+public class Well : Interactable, ISaveable
 {
     [SerializeField] int charges = 3;
     [Tooltip("Ворот, который прокручивается, когда набираешь воду (необязательно)")]
     [SerializeField] Transform crank;
 
     float crankSpin;
+
+    public string SaveKey => SaveKeys.Of(this, transform.position);
+    public string SaveState() => charges.ToString();
+    public void LoadState(string state) => int.TryParse(state, out charges);
 
     public override string Prompt => $"Набрать воды (осталось {charges})";
     public override bool CanInteract => charges > 0;
@@ -17,9 +21,10 @@ public class Well : Interactable
     {
         charges--;
         GameSession.Add(ItemId.Water);
+        GameSession.AddXp("survival", 5f);
         GameMessages.Show(charges > 0 ? "Набрал бутылку воды" : "Набрал последнюю воду, колодец пуст");
         crankSpin = 720f;
-        Sfx.Play(SoundId.Well, transform.position + Vector3.up, 0.9f);
+        Sfx.Play(SoundId.Well, transform.position + Vector3.up, 0.35f);
     }
 
     void Update()

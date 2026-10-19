@@ -1,16 +1,19 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// Выпить воду по Q: тратит бутылку из GameSession и лечит.
-[RequireComponent(typeof(Health))]
+// Быстрое питьё по Q: выпить чистую воду (или любой другой напиток, кроме грязной воды),
+// не открывая инвентарь. Жажда и здоровье считаются в PlayerNeeds.
+[RequireComponent(typeof(PlayerNeeds))]
 public class PlayerSupplies : MonoBehaviour
 {
     InputAction drinkAction;
+    PlayerNeeds needs;
     Health health;
 
     void Awake()
     {
         drinkAction = InputSystem.actions.FindAction("Player/Drink", true);
+        needs = GetComponent<PlayerNeeds>();
         health = GetComponent<Health>();
     }
 
@@ -19,14 +22,13 @@ public class PlayerSupplies : MonoBehaviour
         if (!drinkAction.WasPressedThisFrame() || health.IsDead)
             return;
 
-        if (health.Current >= health.Max)
+        var drink = GameSession.FindStack("water_clean")
+                    ?? GameSession.Data.items.Find(s => s.Def != null && s.Def.type == "drink" && s.id != "water_dirty");
+        if (drink == null)
+            GameMessages.Show("Чистой воды нет. Набери в колодце или вскипяти грязную");
+        else if (GameSession.Data.thirst < 5f)
             GameMessages.Show("Пить пока не хочется");
-        else if (GameSession.Remove(ItemId.Water))
-        {
-            health.Heal(Items.WaterHeal);
-            GameMessages.Show("Выпил воды");
-        }
         else
-            GameMessages.Show("Воды нет. Набери в колодце");
+            needs.Consume(drink);
     }
 }

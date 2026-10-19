@@ -6,9 +6,18 @@
 
 Движок: Unity 6 (6000.6.6f1), Universal Render Pipeline
 Шрифт интерфейса: LegacyRuntime, встроен в Unity
+Предметы, рецепты, таблицы добычи, радиоэфир, словарик и черты — из версии игры на Python (p0lq)
 
 Сторонние ассеты:
-Модель игрока (персонаж Ch15), модель «Серого» (персонаж Ch10)
-и анимации набора Scary Zombie Pack:
+Модель игрока (персонаж Ch15) и его анимации Start Walking, Firing Rifle, Fast Run, Punching,
+модель «Серого» (персонаж Ch10), модель бандита (X Bot) и анимации набора Scary Zombie Pack:
 Mixamo, Adobe — https://www.mixamo.com
 Лицензия: условия использования Adobe Mixamo, бесплатно для личных и коммерческих проектов.
+
+Звуки зомби (дыхание, удар, смерть, ломка двери), удар героя и ветер:
+Звукограм — https://zvukogram.com
+Лицензия: сайт лицензий не выдаёт и правообладателей не указывает.
+
+Остальные звуки: наборы Impact Sounds, RPG Audio, Interface Sounds, Music Jingles и Sci-Fi Sounds,
+Kenney — https://kenney.nl
+Лицензия: Creative Commons Zero (CC0), общественное достояние.

@@ -40,7 +40,13 @@ public class Flashlight : MonoBehaviour
             return;
         }
 
-        if (toggleAction.WasPressedThisFrame())
+        // Светит, только пока фонарик надет в слот «свет» (его можно снять в инвентаре).
+        if (IsOn && GameSession.Equipped("light") == null)
+            SetOn(false);
+
+        if (toggleAction.WasPressedThisFrame() && GameSession.Equipped("light") == null)
+            GameMessages.Show("Фонарика нет. Надень его в инвентаре [I]");
+        else if (toggleAction.WasPressedThisFrame())
         {
             if (!IsOn && GameSession.Battery <= 0f && !TryChangeBatteries())
                 GameMessages.Show("Батарейки сели. Нужны новые");
@@ -79,7 +85,7 @@ public class Flashlight : MonoBehaviour
     void SetOn(bool on)
     {
         if (on != IsOn)
-            Sfx.Play(SoundId.Click, transform.position + Vector3.up * 1.3f, 0.5f);
+            Sfx.Play(SoundId.Click, transform.position + Vector3.up * 1.3f, 0.21f);
         IsOn = on;
         if (lamp != null)
             lamp.enabled = on;

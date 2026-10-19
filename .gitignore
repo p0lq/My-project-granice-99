@@ -112,3 +112,7 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Большие FBX Mixamo с моделью: из них сохраняются клипы .anim в Assets/Art/Animations
+/Assets/Art/Import/
+/Assets/Art/Import.meta

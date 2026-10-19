@@ -16,6 +16,17 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] float turnSpeed = 720f;
     [SerializeField] float gravity = -20f;
 
+    [Header("Выносливость (бег)")]
+    [SerializeField] float maxStamina = 100f;
+    [Tooltip("Сколько тратит бег за секунду. 100 / 22 ≈ 4,5 с бега с полной выносливостью")]
+    [SerializeField] float staminaDrain = 22f;
+    [Tooltip("Сколько восстанавливается за секунду, когда не бежишь")]
+    [SerializeField] float staminaRegen = 14f;
+    [Tooltip("Пауза перед восстановлением после бега, с")]
+    [SerializeField] float regenDelay = 0.8f;
+    [Tooltip("Выбившись из сил, снова побежать можно только с этим запасом")]
+    [SerializeField] float recoverThreshold = 30f;
+
     [Header("Шум: на каком расстоянии враги слышат шаги, м")]
     [SerializeField] float walkNoise = 6f;
     [SerializeField] float runNoise = 12f;
@@ -30,6 +41,10 @@ public class PlayerMovement : MonoBehaviour
     InputAction crouchAction;
     float verticalVelocity;
     float lockedUntil;
+    PlayerNeeds needs;
+    float stamina;
+    float regenAt;
+    bool exhausted;
 
     // Аниматор и ИИ будут читать эти значения: скорость для смены Idle/Walk/Run,
     // присед для шума (враги слышат бегущего дальше, чем крадущегося).
@@ -37,6 +52,8 @@ public class PlayerMovement : MonoBehaviour
     public bool IsRunning { get; private set; }
     public bool IsCrouching { get; private set; }
     public bool CanMove { get; set; } = true;
+    public float Stamina01 => stamina / maxStamina;
+    public bool Exhausted => exhausted;
 
     public float NoiseRadius
     {
@@ -44,7 +61,8 @@ public class PlayerMovement : MonoBehaviour
         {
             if (CurrentSpeed < 0.1f)
                 return 0f;
-            return IsCrouching ? crouchNoise : IsRunning ? runNoise : walkNoise;
+            float noise = IsCrouching ? crouchNoise : IsRunning ? runNoise : walkNoise;
+            return needs != null ? noise * needs.NoiseMultiplier : noise;
         }
     }
 
@@ -57,6 +75,8 @@ public class PlayerMovement : MonoBehaviour
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+        needs = GetComponent<PlayerNeeds>();
+        stamina = maxStamina;
 
         // Действия заданы в Assets/InputSystem_Actions, карта Player.
         moveAction = InputSystem.actions.FindAction("Player/Move", true);
@@ -78,8 +98,15 @@ public class PlayerMovement : MonoBehaviour
         Vector3 direction = CameraRelative(input);
 
         IsCrouching = CanMove && crouchAction.IsPressed();
-        IsRunning = !IsCrouching && sprintAction.IsPressed() && direction.sqrMagnitude > 0.01f;
+        IsRunning = !IsCrouching && !exhausted && stamina > 0f && sprintAction.IsPressed() && direction.sqrMagnitude > 0.01f;
+        UpdateStamina();
+        // Навык «Скрытность» растёт, пока крадёшься (в старой игре так же).
+        if (IsCrouching && CurrentSpeed > 0.5f)
+            GameSession.AddXp("sneak", 0.4f * Time.deltaTime);
         float speed = IsCrouching ? crouchSpeed : IsRunning ? runSpeed : walkSpeed;
+        // Усталость, перелом ноги и перегруз замедляют (PlayerNeeds).
+        if (needs != null)
+            speed *= needs.SpeedMultiplier;
 
         if (direction.sqrMagnitude > 0.01f)
         {
@@ -98,6 +125,26 @@ public class PlayerMovement : MonoBehaviour
         Vector3 horizontal = controller.velocity;
         horizontal.y = 0f;
         CurrentSpeed = horizontal.magnitude;
+    }
+
+    void UpdateStamina()
+    {
+        if (IsRunning)
+        {
+            stamina = Mathf.Max(0f, stamina - staminaDrain * Time.deltaTime);
+            regenAt = Time.time + regenDelay;
+            if (stamina <= 0f)
+            {
+                exhausted = true;
+                GameMessages.Show("Выбился из сил");
+            }
+        }
+        else if (Time.time >= regenAt)
+        {
+            stamina = Mathf.Min(maxStamina, stamina + staminaRegen * Time.deltaTime);
+            if (exhausted && stamina >= recoverThreshold)
+                exhausted = false;
+        }
     }
 
     Vector3 CameraRelative(Vector2 input)

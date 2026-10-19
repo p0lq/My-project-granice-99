@@ -1,28 +1,35 @@
 using System.Collections.Generic;
 
-// Все предметы игры. Их немного, поэтому хватает списка в коде без ScriptableObject.
+// Сюжетные предметы, на которые ссылаются код и Story.json. Все остальные предметы
+// (их около 80) живут только в данных Resources/Data/Legacy/items.json по строковому id.
 public enum ItemId
 {
     Water,
     Batteries,
     BunkerKey,
     Antidote,
+    UzbekNote,
+    Scrap,
 }
 
 public static class Items
 {
-    static readonly Dictionary<ItemId, string> names = new()
+    static readonly Dictionary<ItemId, string> keys = new()
     {
-        { ItemId.Water, "Бутылка воды" },
-        { ItemId.Batteries, "Батарейки «Электрон»" },
-        { ItemId.BunkerKey, "Ключ от люка «Подземки»" },
-        { ItemId.Antidote, "Антидот «ПФ-2»" },
+        { ItemId.Water, "water_clean" },
+        { ItemId.Batteries, "batteries" },
+        { ItemId.BunkerKey, "bunker_key" },
+        { ItemId.Antidote, "antidote" },
+        { ItemId.UzbekNote, "note_uz" },
+        { ItemId.Scrap, "scrap" },
     };
 
-    public static string Name(ItemId id) => names[id];
+    public static string Key(ItemId id) => keys[id];
 
-    // Сколько здоровья возвращает одна бутылка воды.
-    public const float WaterHeal = 30f;
+    public static string Name(ItemId id) => GameData.ItemName(Key(id));
+
+    public static string Name(string id) => GameData.ItemName(id);
+
     // Сколько заряда фонарика (из 100) даёт одна пачка батареек.
     public const float BatteryCharge = 60f;
 }

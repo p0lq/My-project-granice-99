@@ -47,9 +47,14 @@ public class DamageZone : MonoBehaviour
                 dead.Add(health);
                 continue;
             }
+            // Героя пыль не бьёт напрямую, а каждый кадр заражает «пыльной болезнью» (PlayerNeeds).
+            if (health.TryGetComponent(out PlayerNeeds needs))
+            {
+                needs.MarkDust();
+                continue;
+            }
             if (Time.time < nextHitTime[health])
                 continue;
-
             health.TakeDamage(damage);
             nextHitTime[health] = Time.time + interval;
         }

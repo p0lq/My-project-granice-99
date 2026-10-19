@@ -21,8 +21,40 @@ public static class AnimatorControllerBuilder
         { "SK_Player", (3f, 5.5f) },
         // Walk под скорость блуждания, Run под погоню.
         { "SK_Grey", (1.2f, 3.4f) },
+        { "SK_Bandit", (1.4f, 3f) },
     };
     const float CrouchSpeed = 1.5f;
+
+    // У кого занимать недостающие клипы.
+    // У кого занимать недостающие клипы, по порядку. Бандит (X Bot) своих анимаций не имеет:
+    // ходит и бегает как герой, умирает как «Серый».
+    static readonly Dictionary<string, string[]> BorrowFrom = new()
+    {
+        { "SK_Player", new[] { "SK_Grey" } },
+        { "SK_Bandit", new[] { "SK_Player", "SK_Grey" } },
+    };
+
+    static Dictionary<string, AnimationClip> LoadClips(string folder, string modelName)
+    {
+        var files = new List<string> { $"{folder}/{modelName}.fbx" };
+        files.AddRange(Directory.GetFiles(folder, modelName + "@*.fbx").Select(f => f.Replace(Path.DirectorySeparatorChar, '/')));
+        var clips = new Dictionary<string, AnimationClip>();
+        foreach (var file in files)
+            foreach (var clip in AssetDatabase.LoadAllAssetsAtPath(file).OfType<AnimationClip>())
+                // «mixamo.com» — пустой клип с T-позой внутри самой модели Mixamo.
+                if (!clip.name.StartsWith("__preview__") && clip.name != "mixamo.com")
+                    clips[clip.name] = clip;
+
+        // Клипы, сохранённые из больших FBX Mixamo (Assets/Art/Import), важнее одноимённых из FBX.
+        if (AssetDatabase.IsValidFolder(CharacterModelImport.AnimationFolder))
+            foreach (var path in Directory.GetFiles(CharacterModelImport.AnimationFolder, modelName + "@*.anim"))
+            {
+                var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path.Replace(Path.DirectorySeparatorChar, '/'));
+                if (clip != null)
+                    clips[clip.name] = clip;
+            }
+        return clips;
+    }
 
     [MenuItem("Граница-99/Создать Animator Controller для модели")]
     static void BuildForSelection()
@@ -49,14 +81,27 @@ public static class AnimatorControllerBuilder
         string modelName = Path.GetFileNameWithoutExtension(modelPath);
         // Unity хранит пути ассетов с прямыми слешами, а Windows отдаёт обратные.
         string folder = Path.GetDirectoryName(modelPath).Replace(Path.DirectorySeparatorChar, '/');
-        var files = new List<string> { modelPath };
-        files.AddRange(Directory.GetFiles(folder, modelName + "@*.fbx").Select(f => f.Replace(Path.DirectorySeparatorChar, '/')));
+        var clips = LoadClips(folder, modelName);
 
-        var clips = new Dictionary<string, AnimationClip>();
-        foreach (var file in files)
-            foreach (var clip in AssetDatabase.LoadAllAssetsAtPath(file).OfType<AnimationClip>())
-                if (!clip.name.StartsWith("__preview__"))
-                    clips[clip.name] = clip;
+        // Недостающие клипы берём у другой модели: Humanoid переносит анимацию между
+        // скелетами. Так у героя есть модель, пока не скачаны его собственные анимации.
+        if (BorrowFrom.TryGetValue(modelName, out var donors))
+            foreach (var donor in donors)
+            {
+                var donorClips = LoadClips(folder, donor);
+                // Бандит стреляет: его удар — запись Firing Rifle героя (у героя это клип CrouchWalk).
+                if (modelName == "SK_Bandit" && !clips.ContainsKey("Attack") && donorClips.TryGetValue("CrouchWalk", out var fire))
+                    clips["Attack"] = fire;
+                var borrowed = new List<string>();
+                foreach (var pair in donorClips)
+                    if (!clips.ContainsKey(pair.Key) && pair.Key != "Scream" && pair.Key != "Attack2H")
+                    {
+                        clips[pair.Key] = pair.Value;
+                        borrowed.Add(pair.Key);
+                    }
+                if (borrowed.Count > 0)
+                    Debug.Log($"{modelName}: клипы {string.Join(", ", borrowed)} взяты у {donor}");
+            }
 
         if (!clips.ContainsKey("Idle"))
         {
@@ -118,7 +163,11 @@ public static class AnimatorControllerBuilder
             Connect(crouch, locomotion, AnimatorConditionMode.IfNot, "Crouch");
         }
 
-        AddOneShot(sm, clips, "Attack", locomotion);
+        // У героя удар играет слой верха тела (ниже), а ноги продолжают идти или бежать.
+        // Удар в базовом слое съел бы триггер Attack раньше этого слоя.
+        bool weapons = modelName == "SK_Player";
+        if (!weapons)
+            AddOneShot(sm, clips, "Attack", locomotion);
         AddOneShot(sm, clips, "Hit", locomotion);
         AddOneShot(sm, clips, "Scream", locomotion);
 
@@ -132,8 +181,91 @@ public static class AnimatorControllerBuilder
             t.duration = 0.1f;
         }
 
+        if (weapons)
+            AddPlayerLayers(controller, folder, clips);
+
         AssetDatabase.SaveAssets();
         return controller;
+    }
+
+    // Слои героя поверх ходьбы и бега:
+    //   «Руки крадучись» — в приседе руки берутся из стойки Idle (опущены, оружие в правой),
+    //     а не из записи с винтовкой; вес слоя ставит CharacterAnimator по параметру Crouch;
+    //   «Удар (верх тела)» — свой удар у каждого оружия, ноги в это время продолжают двигаться.
+    static void AddPlayerLayers(AnimatorController controller, string folder, Dictionary<string, AnimationClip> clips)
+    {
+        controller.AddParameter("Weapon", AnimatorControllerParameterType.Int);
+
+        var arms = NewLayer(controller, CrouchArmsLayer, ArmsMask(), 0f);
+        arms.defaultState = arms.AddState("Руки опущены");
+        arms.defaultState.motion = clips["Idle"];
+
+        var attack = NewLayer(controller, "Удар (верх тела)", UpperBodyMask(), 1f);
+        attack.defaultState = attack.AddState("Нет удара");
+        clips.TryGetValue("Attack", out var knife);
+        // Пока нет своего удара монтировкой (SK_Player@Attack2H), берём удар «Серого»:
+        // замах двумя руками сверху похож на удар тяжёлым двуручным предметом.
+        if (!clips.TryGetValue("Attack2H", out var crowbar))
+            LoadClips(folder, "SK_Grey").TryGetValue("Attack", out crowbar);
+        AddStrike(attack, "Удар ножом", knife, PlayerCombat.OneHanded);
+        AddStrike(attack, "Удар монтировкой", crowbar, PlayerCombat.TwoHanded);
+        // Выстрел из ПМ или ружья — вскидка из записи Firing Rifle (у героя это клип CrouchWalk).
+        clips.TryGetValue("CrouchWalk", out var fire);
+        AddStrike(attack, "Выстрел", fire, PlayerCombat.Gun);
+    }
+
+    public const string CrouchArmsLayer = "Руки крадучись";
+
+    static AnimatorStateMachine NewLayer(AnimatorController controller, string name, AvatarMask mask, float weight)
+    {
+        var sm = new AnimatorStateMachine { name = name, hideFlags = HideFlags.HideInHierarchy };
+        AssetDatabase.AddObjectToAsset(sm, controller);
+        controller.AddLayer(new AnimatorControllerLayer { name = name, avatarMask = mask, defaultWeight = weight, stateMachine = sm });
+        return sm;
+    }
+
+    static void AddStrike(AnimatorStateMachine sm, string name, AnimationClip clip, int weapon)
+    {
+        if (clip == null)
+            return;
+        var strike = sm.AddState(name);
+        strike.motion = clip;
+        // Любой клип удара ускоряется или замедляется до длины перезарядки.
+        strike.speed = clip.length / PlayerCombat.AttackDuration;
+
+        var enter = sm.AddAnyStateTransition(strike);
+        enter.AddCondition(AnimatorConditionMode.If, 0f, "Attack");
+        enter.AddCondition(AnimatorConditionMode.Equals, weapon, "Weapon");
+        enter.AddCondition(AnimatorConditionMode.IfNot, 0f, "Dead");
+        enter.canTransitionToSelf = true;
+        enter.hasExitTime = false;
+        enter.duration = 0.08f;
+        // Плавный возврат рук после удара, без рывка в стойку.
+        var back = strike.AddTransition(sm.defaultState);
+        back.hasExitTime = true;
+        back.exitTime = 0.85f;
+        back.duration = 0.15f;
+    }
+
+    static AvatarMask ArmsMask() => Mask("Assets/Art/Animators/ArmsMask.mask",
+        AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm, AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+
+    static AvatarMask UpperBodyMask() => Mask("Assets/Art/Animators/UpperBodyMask.mask",
+        AvatarMaskBodyPart.Body, AvatarMaskBodyPart.Head, AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.RightArm,
+        AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers);
+
+    static AvatarMask Mask(string path, params AvatarMaskBodyPart[] active)
+    {
+        var mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(path);
+        if (mask == null)
+        {
+            mask = new AvatarMask();
+            AssetDatabase.CreateAsset(mask, path);
+        }
+        for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++)
+            mask.SetHumanoidBodyPartActive((AvatarMaskBodyPart)i, System.Array.IndexOf(active, (AvatarMaskBodyPart)i) >= 0);
+        EditorUtility.SetDirty(mask);
+        return mask;
     }
 
     // Короткое действие поверх всего: запускается триггером и само возвращается в Locomotion.
@@ -167,6 +299,8 @@ public static class AnimatorControllerBuilder
     static void Clear(AnimatorController controller)
     {
         controller.parameters = new AnimatorControllerParameter[0];
+        while (controller.layers.Length > 1)
+            controller.RemoveLayer(1);
         var sm = controller.layers[0].stateMachine;
         foreach (var t in sm.anyStateTransitions)
             sm.RemoveAnyStateTransition(t);

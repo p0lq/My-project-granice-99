@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 // переход на следующий уровень. Меню и HUD только читают отсюда состояние и вызывают методы.
 public class GameManager : MonoBehaviour
 {
-    public enum State { Playing, Paused, Won, Lost }
+    public enum State { Playing, Paused, Won, Lost, Dialogue }
 
     public static GameManager Instance { get; private set; }
 
@@ -16,6 +16,8 @@ public class GameManager : MonoBehaviour
     [SerializeField] ItemId objectiveItem = ItemId.BunkerKey;
     [SerializeField] string objectiveBefore = "Найди ключ от люка";
     [SerializeField] string objectiveAfter = "Спустись в люк";
+    [Tooltip("Брать цель из сюжета (её меняют диалоги), а не из полей выше. Включено в посёлке")]
+    [SerializeField] bool storyObjective;
 
     [Tooltip("Сколько секунд после смерти показывается мир, прежде чем выйдет меню проигрыша")]
     [SerializeField] float loseDelay = 2f;
@@ -26,7 +28,9 @@ public class GameManager : MonoBehaviour
     float loseTime = -1f;
 
     public State Current { get; private set; } = State.Playing;
-    public string Objective => GameSession.Has(objectiveItem) ? objectiveAfter : objectiveBefore;
+    public string Objective => storyObjective && !string.IsNullOrEmpty(GameSession.Objective)
+        ? Story.CurrentObjective()
+        : GameSession.Has(objectiveItem) ? objectiveAfter : objectiveBefore;
     public Health PlayerHealth => playerHealth;
 
     public event Action<State> StateChanged;
@@ -53,6 +57,10 @@ public class GameManager : MonoBehaviour
             playerHealth.Died += OnPlayerDied;
         }
         GameSession.Checkpoint();
+        // Если игру загрузили из файла, расставить мир как в момент сохранения.
+        SaveSystem.ApplyPending();
+        if (playerHealth != null)
+            playerHealth.SetCurrent(GameSession.Health > 0f ? GameSession.Health : GameSession.StartHealth);
     }
 
     void OnDestroy()
@@ -65,6 +73,12 @@ public class GameManager : MonoBehaviour
     {
         if (playerHealth != null && !playerHealth.IsDead)
             GameSession.Health = playerHealth.Current;
+
+        var kb = Keyboard.current;
+        if (kb != null && Current == State.Playing && kb.f5Key.wasPressedThisFrame)
+            SaveGame();
+        if (kb != null && (Current == State.Playing || Current == State.Paused) && kb.f9Key.wasPressedThisFrame)
+            LoadGame();
 
         if (pauseAction.WasPressedThisFrame())
         {
@@ -86,6 +100,26 @@ public class GameManager : MonoBehaviour
     public void Resume() => SetState(State.Playing);
 
     public void Win() => SetState(State.Won);
+
+    public void EnterDialogue() => SetState(State.Dialogue);
+
+    public void SaveGame()
+    {
+        // Мёртвого или во время схватки не сохраняем, чтобы не записать безвыходное положение.
+        if (playerHealth != null && playerHealth.IsDead)
+            return;
+        foreach (var e in EnemyAI.All)
+            if (e != null && (e.Current == EnemyAI.State.Chase || e.Current == EnemyAI.State.Attack))
+            {
+                GameMessages.Show("Нельзя сохраниться, пока за тобой гонятся");
+                return;
+            }
+        if (playerHealth != null)
+            GameSession.Health = playerHealth.Current;
+        SaveSystem.Save();
+    }
+
+    public void LoadGame() => SaveSystem.Load();
 
     public void Restart()
     {
@@ -127,11 +161,11 @@ public class GameManager : MonoBehaviour
         else
             playerMap.Disable();
         // На паузе и в финальных меню звуки мира замирают, кнопки и музыка финала слышны.
-        AudioListener.pause = !playing;
+        AudioListener.pause = !playing && state != State.Dialogue;
         if (state == State.Won)
-            Sfx.PlayUI(SoundId.Win);
+            Sfx.PlayUI(SoundId.Win, 0.42f);
         else if (state == State.Lost)
-            Sfx.PlayUI(SoundId.Lose);
+            Sfx.PlayUI(SoundId.Lose, 0.42f);
         StateChanged?.Invoke(state);
     }
 

@@ -128,10 +128,12 @@ public static class SceneBuildKit
         controller.center = new Vector3(0f, 0.875f, 0f);
 
         root.AddComponent<Health>();
+        root.AddComponent<PlayerNeeds>();
         root.AddComponent<PlayerMovement>();
         root.AddComponent<PlayerCombat>();
         var animator = root.AddComponent<CharacterAnimator>();
         SetObject(animator, "fallbackBody", Body(root.transform, "SK_Player", material, 1.75f));
+        root.AddComponent<WeaponHolder>();
         root.AddComponent<Footsteps>();
         root.AddComponent<CharacterSounds>();
 
@@ -158,7 +160,7 @@ public static class SceneBuildKit
         return root;
     }
 
-    public static GameObject Grey(Vector3 position, Material material, int number)
+    public static GameObject Grey(Vector3 position, Material material, int number, string model = "SK_Grey")
     {
         var root = new GameObject($"Серый {number}");
         root.transform.position = position;
@@ -183,11 +185,33 @@ public static class SceneBuildKit
         SetFloat(health, "maxHealth", 60f);
         root.AddComponent<EnemyAI>();
         var animator = root.AddComponent<CharacterAnimator>();
-        SetObject(animator, "fallbackBody", Body(root.transform, "SK_Grey", material, 1.8f));
+        SetObject(animator, "fallbackBody", Body(root.transform, model, material, 1.8f));
         var steps = root.AddComponent<Footsteps>();
         Set(steps, "stepLength", p => p.floatValue = 0.6f);
-        Set(steps, "volume", p => p.floatValue = 0.3f);
+        Set(steps, "volume", p => p.floatValue = 0.18f);
         root.AddComponent<CharacterSounds>();
+        return root;
+    }
+
+    // Бандит «Волков степи»: человек с ПМ. Видит дальше «Серых», стреляет издалека,
+    // тело можно обыскать (таблица bandit: патроны, «Астра», доллары, иногда ПМ).
+    public static GameObject Bandit(Vector3 position, Material material, int number)
+    {
+        var root = Grey(position, material, number, "SK_Bandit");
+        root.name = $"Бандит {number}";
+        SetFloat(root.GetComponent<Health>(), "maxHealth", 70f);
+        var ai = root.GetComponent<EnemyAI>();
+        SetBool(ai, "human", true);
+        SetBool(ai, "ranged", true);
+        SetFloat(ai, "sightRange", 13f);
+        SetFloat(ai, "sightAngle", 140f);
+        SetFloat(ai, "wanderSpeed", 1.4f);
+        SetFloat(ai, "chaseSpeed", 3f);
+        SetFloat(ai, "attackDamage", 10f);
+        SetFloat(ai, "screamTime", 0f);
+        SetFloat(ai, "wanderRadius", 4f);
+        SetString(ai, "corpseLoot", "bandit");
+        SetString(ai, "corpseName", "тело бандита");
         return root;
     }
 
@@ -282,12 +306,25 @@ public static class SceneBuildKit
         Set(manager, "objectiveAfter", p => p.stringValue = after);
         go.AddComponent<GameHUD>();
         go.AddComponent<GameMenus>();
+        go.AddComponent<GameWindows>();
+        go.AddComponent<DialogueUI>();
         return manager;
+    }
+
+    // Часы мира. С солнцем — улица (день и ночь), без солнца — помещение (бункер).
+    public static void Clock(Light sun)
+    {
+        var clock = new GameObject("Часы мира").AddComponent<WorldClock>();
+        if (sun != null)
+            SetObject(clock, "sun", sun);
     }
 
     // ---------------------------------------------------------------- объекты уровня
 
-    public static Collectible Pickup(ItemId item, Vector3 position, Material material, int amount = 1)
+    public static Collectible Pickup(ItemId item, Vector3 position, Material material, int amount = 1) =>
+        Pickup(Items.Key(item), position, material, amount);
+
+    public static Collectible Pickup(string item, Vector3 position, Material material, int amount = 1)
     {
         var root = new GameObject($"Предмет: {Items.Name(item)}");
         root.transform.position = position;
@@ -299,8 +336,8 @@ public static class SceneBuildKit
         // Размеры из плана арта: бутылка 0,30 м, остальное примерно с ладонь.
         Vector3 size = item switch
         {
-            ItemId.Water => new Vector3(0.1f, 0.3f, 0.1f),
-            ItemId.Antidote => new Vector3(0.25f, 0.12f, 0.15f),
+            "water_clean" or "water_dirty" or "bottle_empty" => new Vector3(0.1f, 0.3f, 0.1f),
+            "antidote" => new Vector3(0.25f, 0.12f, 0.15f),
             _ => new Vector3(0.18f, 0.08f, 0.12f),
         };
         var visual = Block("Модель", Vector3.zero, size, material, root.transform);
@@ -312,7 +349,7 @@ public static class SceneBuildKit
         glow.transform.SetParent(root.transform, true);
 
         var collectible = root.AddComponent<Collectible>();
-        Set(collectible, "item", p => p.enumValueIndex = (int)item);
+        Set(collectible, "itemId", p => p.stringValue = item);
         Set(collectible, "amount", p => p.intValue = amount);
         SetObject(collectible, "visual", visual.transform);
         return collectible;
@@ -336,11 +373,26 @@ public static class SceneBuildKit
 
     public static SearchContainer Crate(string name, Vector3 position, Material material, params (ItemId item, int amount)[] loot)
     {
+        var list = new (string, int)[loot.Length];
+        for (int i = 0; i < loot.Length; i++)
+            list[i] = (Items.Key(loot[i].item), loot[i].amount);
+        return Crate(name, position, material, "", list);
+    }
+
+    // Ящик с таблицей добычи из loot.json (home, kitchen, medical…) и обязательным содержимым.
+    public static SearchContainer Crate(string name, Vector3 position, Material material, string lootTable, params (string item, int amount)[] loot)
+    {
         // Ящик 0,8×0,5×0,5 м, крышка отдельно, ось на заднем ребре.
         var root = new GameObject(name);
         root.transform.position = position;
         var box = Block("Корпус", position + new Vector3(0f, 0.22f, 0f), new Vector3(0.8f, 0.44f, 0.5f), material, root.transform);
         box.name = "Корпус";
+        // Доски и уголки, чтобы ящик читался как ящик, а не как кирпич.
+        foreach (float y in new[] { 0.1f, 0.34f })
+            foreach (float z in new[] { -0.26f, 0.26f })
+                PropKit.Part(root.transform, "Доска", PrimitiveType.Cube, new Vector3(0f, y, z), new Vector3(0.82f, 0.06f, 0.02f), "DarkWood", collider: false);
+        foreach (float x in new[] { -0.39f, 0.39f })
+            PropKit.Part(root.transform, "Уголок", PrimitiveType.Cube, new Vector3(x, 0.22f, 0f), new Vector3(0.04f, 0.46f, 0.52f), "Metal", collider: false);
 
         var hinge = new GameObject("Ось крышки").transform;
         hinge.SetParent(root.transform, false);
@@ -357,10 +409,11 @@ public static class SceneBuildKit
             for (int i = 0; i < loot.Length; i++)
             {
                 var element = p.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("item").enumValueIndex = (int)loot[i].item;
+                element.FindPropertyRelative("item").stringValue = loot[i].item;
                 element.FindPropertyRelative("amount").intValue = loot[i].amount;
             }
         });
+        SetString(container, "lootTable", lootTable);
         return container;
     }
 

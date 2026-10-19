@@ -11,6 +11,7 @@ using UnityEngine;
 //   Hit    trigger — получил урон
 //   Dead   bool    — погиб
 //   Scream trigger — «Серый» заметил игрока
+//   Weapon int     — оружие героя: 1 нож, 2 монтировка; включает слой рук этого оружия
 //
 // Пока модели нет и Animator не найден, показывает смерть простым наклоном тела,
 // чтобы на капсулах было видно, что персонаж погиб.
@@ -22,6 +23,7 @@ public class CharacterAnimator : MonoBehaviour
     static readonly int HitId = Animator.StringToHash("Hit");
     static readonly int DeadId = Animator.StringToHash("Dead");
     static readonly int ScreamId = Animator.StringToHash("Scream");
+    static readonly int WeaponId = Animator.StringToHash("Weapon");
 
     [Tooltip("Если пусто, ищется в дочерних объектах (Animator висит на импортированной модели)")]
     [SerializeField] Animator animator;
@@ -32,6 +34,8 @@ public class CharacterAnimator : MonoBehaviour
 
     PlayerMovement playerMovement;
     EnemyAI enemy;
+    int crouchArmsLayer = -1;
+    float crouchArmsWeight;
     readonly HashSet<int> parameters = new();
 
     void Awake()
@@ -44,6 +48,8 @@ public class CharacterAnimator : MonoBehaviour
             animator.applyRootMotion = false;
             foreach (var p in animator.parameters)
                 parameters.Add(p.nameHash);
+            // Слой рук для приседа есть только у героя (его создаёт сборщик аниматора).
+            crouchArmsLayer = animator.GetLayerIndex("Руки крадучись");
         }
 
         playerMovement = GetComponent<PlayerMovement>();
@@ -51,11 +57,15 @@ public class CharacterAnimator : MonoBehaviour
 
         var combat = GetComponent<PlayerCombat>();
         if (combat != null)
+        {
             combat.Attacked += () => Trigger(AttackId);
+            combat.WeaponChanged += SetWeapon;
+        }
         if (enemy != null)
         {
             enemy.Attacked += () => Trigger(AttackId);
             enemy.Alerted += () => Trigger(ScreamId);
+            enemy.Bashed += () => Trigger(AttackId);
         }
 
         var health = GetComponent<Health>();
@@ -88,14 +98,30 @@ public class CharacterAnimator : MonoBehaviour
                     : 0f;
         if (Has(SpeedId))
             animator.SetFloat(SpeedId, speed, speedDamping, Time.deltaTime);
+        bool crouching = playerMovement != null && playerMovement.IsCrouching;
         if (Has(CrouchId))
-            animator.SetBool(CrouchId, playerMovement != null && playerMovement.IsCrouching);
+            animator.SetBool(CrouchId, crouching);
+        if (crouchArmsLayer > 0)
+        {
+            // Плавно, за ту же четверть секунды, что и переход в присед.
+            crouchArmsWeight = Mathf.MoveTowards(crouchArmsWeight, crouching ? 1f : 0f, Time.deltaTime * 4f);
+            animator.SetLayerWeight(crouchArmsLayer, crouchArmsWeight);
+        }
+    }
+
+    void SetWeapon(int weapon)
+    {
+        if (animator != null && Has(WeaponId))
+            animator.SetInteger(WeaponId, weapon);
     }
 
     void OnDied()
     {
         if (animator != null)
         {
+            // Падает всё тело: слой удара больше не перекрывает руки.
+            for (int layer = 1; layer < animator.layerCount; layer++)
+                animator.SetLayerWeight(layer, 0f);
             if (Has(DeadId))
                 animator.SetBool(DeadId, true);
         }

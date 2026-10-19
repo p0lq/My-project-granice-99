@@ -114,7 +114,7 @@ public static class UIFactory
         colors.pressedColor = new Color(0.8f, 0.8f, 0.8f);
         colors.selectedColor = new Color(1.25f, 1.2f, 1.05f);
         button.colors = colors;
-        button.onClick.AddListener(() => Sfx.PlayUI(SoundId.UIClick, 0.6f));
+        button.onClick.AddListener(() => Sfx.PlayUI(SoundId.UIClick, 0.25f));
         button.onClick.AddListener(onClick);
 
         var layout = image.gameObject.AddComponent<LayoutElement>();
@@ -158,5 +158,93 @@ public static class UIFactory
     public static void SetBar(RectTransform fillRect, float fraction)
     {
         fillRect.anchorMax = new Vector2(Mathf.Clamp01(fraction), 1f);
+    }
+
+    // Прокручиваемый список: возвращает контейнер, в который складываются строки сверху вниз.
+    public static RectTransform ScrollList(Transform parent, Vector2 anchor, Vector2 position, Vector2 size, float spacing = 6f)
+    {
+        var view = Image("Список", parent, new Color(0f, 0f, 0f, 0.25f));
+        Place(view.rectTransform, anchor, position, size);
+        view.gameObject.AddComponent<RectMask2D>();
+        var scroll = view.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.scrollSensitivity = 30f;
+
+        var content = Rect("Строки", view.transform);
+        content.anchorMin = new Vector2(0f, 1f);
+        content.anchorMax = new Vector2(1f, 1f);
+        content.pivot = new Vector2(0.5f, 1f);
+        content.offsetMin = new Vector2(8f, 0f);
+        content.offsetMax = new Vector2(-8f, 0f);
+        var layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = spacing;
+        layout.padding = new RectOffset(0, 0, 8, 8);
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scroll.content = content;
+        scroll.viewport = view.rectTransform;
+        return content;
+    }
+
+    public static void Clear(Transform parent)
+    {
+        for (int i = parent.childCount - 1; i >= 0; i--)
+            Object.Destroy(parent.GetChild(i).gameObject);
+    }
+
+    // Строка текста в списке (подстраивает высоту под текст).
+    public static Text Line(Transform list, string value, int size = 22)
+    {
+        var text = Text("Строка", list, value, size, TextAnchor.UpperLeft);
+        text.supportRichText = true;
+        return text;
+    }
+
+    // Кнопка поменьше для списков: «Лечить», «Создать», «+1».
+    public static Button SmallButton(Transform parent, string label, UnityAction onClick, float width = 220f)
+    {
+        var button = Button(parent, label, onClick);
+        var element = button.GetComponent<LayoutElement>();
+        element.preferredHeight = 40f;
+        element.preferredWidth = width;
+        var text = button.GetComponentInChildren<Text>();
+        text.fontSize = 22;
+        return button;
+    }
+
+    public static InputField Input(Transform parent, string placeholder, Vector2 anchor, Vector2 position, Vector2 size)
+    {
+        var back = Image("Поле ввода", parent, new Color(0.15f, 0.13f, 0.11f));
+        Place(back.rectTransform, anchor, position, size);
+        var field = back.gameObject.AddComponent<InputField>();
+        var text = Text("Текст", back.transform, "", 28, TextAnchor.MiddleLeft);
+        var rect = Stretch(text.rectTransform);
+        rect.offsetMin = new Vector2(12f, 0f);
+        text.supportRichText = false;
+        var hint = Text("Подсказка", back.transform, placeholder, 28, TextAnchor.MiddleLeft);
+        Stretch(hint.rectTransform).offsetMin = new Vector2(12f, 0f);
+        hint.color = new Color(1f, 1f, 1f, 0.35f);
+        field.textComponent = text;
+        field.placeholder = hint;
+        return field;
+    }
+
+    // Окно поверх игры: затемнение, рамка, заголовок и крестик. Возвращает рамку.
+    public static RectTransform Window(Transform canvas, string title, Vector2 size, out GameObject root, UnityAction onClose)
+    {
+        var back = Image("Окно: " + title, canvas, new Color(0f, 0f, 0f, 0.55f));
+        Stretch(back.rectTransform);
+        root = back.gameObject;
+        var box = Image("Рамка", back.transform, PanelColor);
+        Place(box.rectTransform, new Vector2(0.5f, 0.5f), Vector2.zero, size);
+        var header = Text("Заголовок", box.transform, title, 36, TextAnchor.UpperLeft);
+        header.color = AccentColor;
+        Place(header.rectTransform, new Vector2(0f, 1f), new Vector2(28f, -18f), new Vector2(size.x - 140f, 50f));
+        var close = Button(box.transform, "×", onClose);
+        Place((RectTransform)close.transform, new Vector2(1f, 1f), new Vector2(-16f, -14f), new Vector2(56f, 52f));
+        return box.rectTransform;
     }
 }

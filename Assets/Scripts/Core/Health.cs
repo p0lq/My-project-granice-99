@@ -26,6 +26,28 @@ public class Health : MonoBehaviour
         Current = maxHealth;
     }
 
+    // Чем нанесён последний удар: infected («Серый»), bullet (бандит), hit. По нему
+    // PlayerNeeds решает, какая будет рана (укус, порез, ушиб) и не попал ли штамм в кровь.
+    public string LastDamageKind { get; private set; } = "hit";
+
+    public void TakeDamage(float amount, string kind)
+    {
+        LastDamageKind = kind;
+        TakeDamage(amount);
+    }
+
+    // Урон без удара: голод, жажда, кровотечение. Не даёт неуязвимости и не вызывает
+    // анимацию попадания и красную вспышку.
+    public void Drain(float amount)
+    {
+        if (IsDead || amount <= 0f)
+            return;
+        Current = Mathf.Max(0f, Current - amount);
+        Changed?.Invoke(Current, maxHealth);
+        if (IsDead)
+            Died?.Invoke();
+    }
+
     public void TakeDamage(float amount)
     {
         if (IsDead || amount <= 0f)

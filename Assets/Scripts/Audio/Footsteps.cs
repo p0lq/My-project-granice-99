@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 // Шаги по пройденному расстоянию, а не по таймеру: при беге шаги чаще,
 // стоишь на месте — тишина. Работает и для игрока, и для «Серых».
@@ -6,7 +7,11 @@ public class Footsteps : MonoBehaviour
 {
     [Tooltip("Длина шага, м")]
     [SerializeField] float stepLength = 0.75f;
-    [SerializeField] float volume = 0.5f;
+    [SerializeField] float volume = 0.28f;
+
+    // Общее ослабление шагов на 15 %. Множителем в коде, а не правкой volume:
+    // volume сохранён в уже собранных сценах и без пересборки бы не поменялся.
+    const float Quieter = 0.85f;
 
     PlayerMovement movement;
     Health health;
@@ -30,7 +35,7 @@ public class Footsteps : MonoBehaviour
 
         travelled += delta.magnitude;
         float length = stepLength;
-        float loud = volume;
+        float loud = volume * Quieter;
         if (movement != null)
         {
             // Бегом шаги длиннее и громче, крадучись короче и почти беззвучны.
@@ -41,7 +46,9 @@ public class Footsteps : MonoBehaviour
         if (travelled >= length)
         {
             travelled = 0f;
-            Sfx.Play(SoundId.Footstep, transform.position, loud, 0.12f);
+            // В бункере бетон, в посёлке трава и земля.
+            var sound = SceneManager.GetActiveScene().name == SceneNames.Bunker ? SoundId.FootstepHard : SoundId.Footstep;
+            Sfx.Play(sound, transform.position, loud, 0.08f);
         }
     }
 }

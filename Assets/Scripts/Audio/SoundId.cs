@@ -1,18 +1,23 @@
-// Все звуки игры. Имя значения совпадает с именем файла для замены:
-// положи Assets/Resources/Audio/Footstep.wav (или .ogg, .mp3), и игра возьмёт его
-// вместо синтезированного звука.
+// Все звуки игры. Файлы лежат в Assets/Resources/Audio/<Имя>/: каждый файл в папке
+// это вариант звука, при проигрывании выбирается случайный. Нет папки — звук молчит.
+// Сейчас там наборы Kenney (CC0); любой можно заменить, положив свои файлы в папку.
 public enum SoundId
 {
     Footstep,
-    Swing,
+    FootstepHard,
+    PlayerAttack,
     Hit,
+    Gunshot,
     PlayerHurt,
-    ZombieGroan,
+    ZombieBreath,
     ZombieScream,
     ZombieAttack,
     ZombieDeath,
     Pickup,
-    Door,
+    DoorOpen,
+    DoorClose,
+    MetalDoor,
+    DoorBash,
     Locked,
     Crate,
     Well,
