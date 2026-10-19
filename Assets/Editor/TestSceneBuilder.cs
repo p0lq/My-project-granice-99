@@ -2,6 +2,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering;
 
 // Собирает сцену для проверки управления, камеры и здоровья из примитивов.
@@ -26,6 +27,7 @@ public static class TestSceneBuilder
         var wall = GetMaterial("Wall", new Color(0.85f, 0.82f, 0.74f));
         var box = GetMaterial("Box", new Color(0.45f, 0.33f, 0.2f));
         var player = GetMaterial("Player", new Color(0.25f, 0.4f, 0.6f));
+        var grey = GetMaterial("Grey", new Color(0.45f, 0.5f, 0.45f));
         var danger = GetMaterial("Danger", new Color(0.85f, 0.75f, 0.2f));
 
         var sun = new GameObject("Солнце").AddComponent<Light>();
@@ -59,7 +61,12 @@ public static class TestSceneBuilder
         zoneCollider.size = new Vector3(1f, 20f, 1f);
         zone.AddComponent<DamageZone>();
 
+        new GameObject("Навигация").AddComponent<RuntimeNavMesh>();
+
         var playerObject = BuildPlayer(player);
+        BuildGrey(grey, new Vector3(-4f, 0f, 14f), 1);
+        BuildGrey(grey, new Vector3(16f, 0f, 0f), 2);
+        BuildGrey(grey, new Vector3(2f, 0f, -14f), 3);
 
         var cameraObject = new GameObject("Main Camera");
         cameraObject.tag = "MainCamera";
@@ -92,28 +99,80 @@ public static class TestSceneBuilder
 
         var health = root.AddComponent<Health>();
         root.AddComponent<PlayerMovement>();
+        root.AddComponent<PlayerCombat>();
+        var animator = root.AddComponent<CharacterAnimator>();
+        SetField(animator, "fallbackBody", Body(root.transform, "SK_Player", material, 1.75f));
         var label = root.AddComponent<DebugHealthLabel>();
         SetField(label, "health", health);
+        return root;
+    }
 
-        // Видимая часть отдельно от корня: потом её заменит модель SK_Player.
-        var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        body.name = "Тело (временное)";
-        Object.DestroyImmediate(body.GetComponent<Collider>());
-        body.transform.SetParent(root.transform, false);
-        body.transform.localPosition = new Vector3(0f, 0.875f, 0f);
-        body.transform.localScale = new Vector3(0.6f, 0.875f, 0.6f);
-        body.GetComponent<Renderer>().sharedMaterial = material;
+    static void BuildGrey(Material material, Vector3 position, int number)
+    {
+        var root = new GameObject($"Серый {number}");
+        root.transform.position = position;
+        root.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
 
-        // «Нос», чтобы было видно, куда смотрит капсула.
+        // Коллайдер нужен, чтобы по «Серому» попадал удар и игрок в него упирался.
+        var collider = root.AddComponent<CapsuleCollider>();
+        collider.height = 1.8f;
+        collider.radius = 0.35f;
+        collider.center = new Vector3(0f, 0.9f, 0f);
+
+        var agent = root.AddComponent<NavMeshAgent>();
+        agent.height = 1.8f;
+        agent.radius = 0.35f;
+        agent.angularSpeed = 360f;
+        agent.stoppingDistance = 1.1f;
+        // EnemyAI включит агента в Start, когда навигационная сетка уже построена.
+        agent.enabled = false;
+
+        var health = root.AddComponent<Health>();
+        SetFloat(health, "maxHealth", 60f);
+        root.AddComponent<EnemyAI>();
+        var animator = root.AddComponent<CharacterAnimator>();
+        SetField(animator, "fallbackBody", Body(root.transform, "SK_Grey", material, 1.8f));
+    }
+
+    // Видимая часть персонажа. Если модель уже лежит в Assets/Art/Models, ставим её
+    // с Animator Controller, иначе капсулу с «носом», чтобы было видно, куда смотрит.
+    static Transform Body(Transform root, string modelName, Material material, float height)
+    {
+        string modelPath = $"Assets/Art/Models/{modelName}.fbx";
+        var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
+        if (model != null)
+        {
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(model, root);
+            // У объектов Unity оператор ?? не видит «уничтоженный» null, поэтому проверки явные.
+            var animator = instance.GetComponent<Animator>();
+            if (animator == null)
+                animator = instance.AddComponent<Animator>();
+            var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>($"Assets/Art/Animators/{modelName}.controller");
+            if (controller == null)
+                controller = AnimatorControllerBuilder.Build(modelPath);
+            animator.runtimeAnimatorController = controller;
+            return instance.transform;
+        }
+
+        var body = new GameObject("Тело (временное)").transform;
+        body.SetParent(root, false);
+
+        var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        Object.DestroyImmediate(capsule.GetComponent<Collider>());
+        capsule.transform.SetParent(body, false);
+        capsule.transform.localPosition = new Vector3(0f, height / 2f, 0f);
+        capsule.transform.localScale = new Vector3(0.6f, height / 2f, 0.6f);
+        capsule.GetComponent<Renderer>().sharedMaterial = material;
+
         var nose = GameObject.CreatePrimitive(PrimitiveType.Cube);
         nose.name = "Направление";
         Object.DestroyImmediate(nose.GetComponent<Collider>());
-        nose.transform.SetParent(root.transform, false);
-        nose.transform.localPosition = new Vector3(0f, 1.45f, 0.3f);
+        nose.transform.SetParent(body, false);
+        nose.transform.localPosition = new Vector3(0f, height - 0.3f, 0.3f);
         nose.transform.localScale = new Vector3(0.15f, 0.15f, 0.25f);
         nose.GetComponent<Renderer>().sharedMaterial = material;
 
-        return root;
+        return body;
     }
 
     static GameObject Block(string name, Vector3 position, Vector3 size, Material material)
@@ -148,6 +207,13 @@ public static class TestSceneBuilder
     {
         var serialized = new SerializedObject(component);
         serialized.FindProperty(field).objectReferenceValue = value;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    static void SetFloat(Object component, string field, float value)
+    {
+        var serialized = new SerializedObject(component);
+        serialized.FindProperty(field).floatValue = value;
         serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 

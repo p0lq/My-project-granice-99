@@ -16,6 +16,11 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] float turnSpeed = 720f;
     [SerializeField] float gravity = -20f;
 
+    [Header("Шум: на каком расстоянии враги слышат шаги, м")]
+    [SerializeField] float walkNoise = 6f;
+    [SerializeField] float runNoise = 12f;
+    [SerializeField] float crouchNoise = 2f;
+
     [Tooltip("Камера, от которой считается направление. Если пусто, берётся Camera.main")]
     [SerializeField] Transform cameraTransform;
 
@@ -24,6 +29,7 @@ public class PlayerMovement : MonoBehaviour
     InputAction sprintAction;
     InputAction crouchAction;
     float verticalVelocity;
+    float lockedUntil;
 
     // Аниматор и ИИ будут читать эти значения: скорость для смены Idle/Walk/Run,
     // присед для шума (враги слышат бегущего дальше, чем крадущегося).
@@ -31,6 +37,22 @@ public class PlayerMovement : MonoBehaviour
     public bool IsRunning { get; private set; }
     public bool IsCrouching { get; private set; }
     public bool CanMove { get; set; } = true;
+
+    public float NoiseRadius
+    {
+        get
+        {
+            if (CurrentSpeed < 0.1f)
+                return 0f;
+            return IsCrouching ? crouchNoise : IsRunning ? runNoise : walkNoise;
+        }
+    }
+
+    // Остановить игрока на время, например пока идёт замах.
+    public void Lock(float seconds)
+    {
+        lockedUntil = Mathf.Max(lockedUntil, Time.time + seconds);
+    }
 
     void Awake()
     {
@@ -51,7 +73,8 @@ public class PlayerMovement : MonoBehaviour
 
     void Update()
     {
-        Vector2 input = CanMove ? moveAction.ReadValue<Vector2>() : Vector2.zero;
+        bool locked = !CanMove || Time.time < lockedUntil;
+        Vector2 input = locked ? Vector2.zero : moveAction.ReadValue<Vector2>();
         Vector3 direction = CameraRelative(input);
 
         IsCrouching = CanMove && crouchAction.IsPressed();
